@@ -6,10 +6,10 @@ import re
 import hdf5storage
 import numpy as np
 
-from utils.waveform import prepare_waveform
-from utils.features import generate_onehot_features
-from utils.io import save_discrete_feature, write_summary
-from utils.phoneme_reader import (
+from speechfeaturegenerator.utils.waveform import prepare_waveform
+from speechfeaturegenerator.utils.features import generate_onehot_features
+from speechfeaturegenerator.utils.io import save_discrete_feature, write_summary
+from speechfeaturegenerator.utils.phoneme_reader import (
     load_phoneme_labels_from_csv,
     load_phoneme_label_set,
 )
@@ -99,9 +99,10 @@ def generate_phoneme_features(
     phoneme_offsets = phoneme_offsets + abs(time_window[0])
 
     if phoneme_labels_csv is None:
-        script_dir = os.path.dirname(os.path.abspath(__file__))
+        import speechfeaturegenerator
+        package_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(speechfeaturegenerator.__file__))))
         phoneme_labels_csv = os.path.join(
-            os.path.dirname(script_dir), "data", "phoneme_labels_standard.csv"
+            package_dir, "data", "phoneme_labels_standard.csv"
         )
 
     all_phoneme_labels = load_phoneme_label_set(phoneme_labels_csv)

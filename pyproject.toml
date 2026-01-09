@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "speechfeaturegenerator"
+version = "0.0.1"
+description = "A package for extracting speech features from audio files"
+requires-python = ">=3.8"
+license = {text = "N/A"}
+authors = [
+    {name = "Krish Patel", email = "kpatel46@u.rochester.edu"}
+]
+
+dependencies = [
+    "numpy>=1.20.0",
+    "hdf5storage>=0.1.18",
+    "polars>=0.18.0",
+    "librosa>=0.9.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "black>=22.0.0",
+    "flake8>=4.0.0",
+]
+
+[tool.setuptools]
+packages = ["speechfeaturegenerator", "speechfeaturegenerator.features", "speechfeaturegenerator.utils"]
+
