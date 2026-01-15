@@ -9,9 +9,8 @@ import numpy as np
 from speechfeaturegenerator.utils.waveform import prepare_waveform
 from speechfeaturegenerator.utils.features import generate_onehot_features
 from speechfeaturegenerator.utils.io import save_discrete_feature, write_summary
-from speechfeaturegenerator.utils.phoneme_reader import (
-    load_phoneme_labels_from_csv,
-    load_phoneme_label_set,
+from speechfeaturegenerator.utils.textgrid_reader import (
+    load_phoneme_labels_from_textgrid,
 )
 
 
@@ -20,7 +19,8 @@ def phoneme(
     output_root,
     stim_names,
     wav_dir,
-    csv_path,
+    textgrid_path=None,
+    textgrid_dir=None,
     out_sr=100,
     pc=None,
     time_window=[-1, 1],
@@ -29,16 +29,35 @@ def phoneme(
     meta_only=False,
     **kwargs,
 ):
-    """Extract phoneme features from audio files using CSV labels."""
+    """
+    Extract phoneme features from audio files using TextGrid labels.
+    
+    Args:
+        textgrid_path: Path to a single TextGrid file (optional)
+        textgrid_dir: Directory containing TextGrid files (optional, will look for {stim_name}.TextGrid)
+    """
     variant = kwargs.get("variant", "onehot_duration")
-    phoneme_labels_csv = kwargs.get("phoneme_labels_csv", None)
 
     if compute_original:
         for stim_name in stim_names:
             wav_path = os.path.join(wav_dir, f"{stim_name}.wav")
-            phoneme_labels, phoneme_onsets, phoneme_offsets = (
-                load_phoneme_labels_from_csv(csv_path, stim_name)
-            )
+            
+            # Load from TextGrid
+            if textgrid_path:
+                # Single TextGrid file for all stimuli
+                phoneme_labels, phoneme_onsets, phoneme_offsets = (
+                    load_phoneme_labels_from_textgrid(textgrid_path)
+                )
+            elif textgrid_dir:
+                # TextGrid file per stimulus
+                tg_path = os.path.join(textgrid_dir, f"{stim_name}.TextGrid")
+                phoneme_labels, phoneme_onsets, phoneme_offsets = (
+                    load_phoneme_labels_from_textgrid(tg_path)
+                )
+            else:
+                raise ValueError(
+                    "Must provide either textgrid_path or textgrid_dir"
+                )
 
             generate_phoneme_features(
                 output_root,
@@ -51,7 +70,6 @@ def phoneme(
                 time_window=time_window,
                 meta_only=meta_only,
                 variant=variant,
-                phoneme_labels_csv=phoneme_labels_csv,
             )
 
 
@@ -66,7 +84,6 @@ def generate_phoneme_features(
     time_window=[-1, 1],
     meta_only=False,
     variant="onehot_duration",
-    phoneme_labels_csv=None,
 ):
     """Generate phoneme one-hot features from labels and timing."""
     feature = "phoneme"
@@ -98,19 +115,12 @@ def generate_phoneme_features(
     phoneme_onsets = phoneme_onsets + abs(time_window[0])
     phoneme_offsets = phoneme_offsets + abs(time_window[0])
 
-    if phoneme_labels_csv is None:
-        import speechfeaturegenerator
-        package_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(speechfeaturegenerator.__file__))))
-        phoneme_labels_csv = os.path.join(
-            package_dir, "data", "phoneme_labels_standard.csv"
-        )
-
-    all_phoneme_labels = load_phoneme_label_set(phoneme_labels_csv)
-
+    # Remove "spn" phonemes first
     phoneme_labels, phoneme_onsets, phoneme_offsets = remove_phoneme(
         phoneme_labels, phoneme_onsets, phoneme_offsets, "spn"
     )
 
+    # Clean and normalize phoneme labels
     phoneme_labels = np.array([label.upper() for label in phoneme_labels])
     phoneme_labels = [re.sub(r"\d+", "", phoneme) for phoneme in phoneme_labels]
     phoneme_labels = [str(phoneme).strip() for phoneme in phoneme_labels]
@@ -118,6 +128,9 @@ def generate_phoneme_features(
     phoneme_onsets = phoneme_onsets.reshape(-1)
     phoneme_offsets = phoneme_offsets.reshape(-1)
     phoneme_labels = np.array(phoneme_labels, dtype="<U3")
+
+    # Extract unique phoneme labels from the data
+    all_phoneme_labels = sorted(set(phoneme_labels))
 
     if variant == "onehot_onset":
         mode = "onset"

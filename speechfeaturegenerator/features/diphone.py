@@ -9,11 +9,10 @@ import numpy as np
 from speechfeaturegenerator.utils.waveform import prepare_waveform
 from speechfeaturegenerator.utils.features import generate_onehot_features
 from speechfeaturegenerator.utils.io import save_discrete_feature, write_summary
-from speechfeaturegenerator.utils.phoneme_reader import (
-    load_phoneme_labels_from_csv,
-    load_phoneme_label_set,
+from speechfeaturegenerator.utils.textgrid_reader import (
+    load_phoneme_labels_from_textgrid,
+    load_word_labels_from_textgrid,
 )
-from speechfeaturegenerator.utils.word_reader import load_word_labels_from_csv
 
 
 def generate_all_diphone_labels(all_phoneme_labels):
@@ -45,7 +44,8 @@ def diphone(
     output_root,
     stim_names,
     wav_dir,
-    csv_path,
+    textgrid_path=None,
+    textgrid_dir=None,
     out_sr=100,
     pc=None,
     time_window=[-1, 1],
@@ -54,28 +54,69 @@ def diphone(
     meta_only=False,
     **kwargs,
 ):
-    """Extract diphone features from audio files using CSV labels."""
+    """
+    Extract diphone features from audio files using TextGrid labels.
+    
+    Args:
+        textgrid_path: Path to a single TextGrid file (optional)
+        textgrid_dir: Directory containing TextGrid files (optional, will look for {stim_name}.TextGrid)
+    """
     variant = kwargs.get("variant", "onehot_duration")
-    phoneme_labels_csv = kwargs.get("phoneme_labels_csv", None)
 
     if compute_original:
-        if phoneme_labels_csv is None:
-            import speechfeaturegenerator
-            package_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(speechfeaturegenerator.__file__))))
-            phoneme_labels_csv = os.path.join(
-                package_dir, "data", "phoneme_labels_standard.csv"
+        # For diphone, we need to collect all phoneme labels from all stimuli first
+        # to generate the complete diphone label set
+        all_phoneme_labels_set = set()
+        
+        # Extract labels from all TextGrid files
+        for stim_name in stim_names:
+            if textgrid_path:
+                tg_path = textgrid_path
+            elif textgrid_dir:
+                tg_path = os.path.join(textgrid_dir, f"{stim_name}.TextGrid")
+            else:
+                raise ValueError(
+                    "Must provide either textgrid_path or textgrid_dir"
+                )
+            
+            labels, _, _ = load_phoneme_labels_from_textgrid(tg_path)
+            # Clean labels (remove stress markers and normalize)
+            labels = [re.sub(r"\d+", "", str(l).upper().strip()) for l in labels]
+            all_phoneme_labels_set.update(labels)
+        
+        if len(all_phoneme_labels_set) == 0:
+            raise ValueError(
+                "Could not extract phoneme labels from input files."
             )
-        all_phoneme_labels = load_phoneme_label_set(phoneme_labels_csv)
+        
+        all_phoneme_labels = sorted(all_phoneme_labels_set)
         all_diphone_labels = generate_all_diphone_labels(all_phoneme_labels)
 
         for stim_name in stim_names:
             wav_path = os.path.join(wav_dir, f"{stim_name}.wav")
-            phoneme_labels, phoneme_onsets, phoneme_offsets = (
-                load_phoneme_labels_from_csv(csv_path, stim_name)
-            )
-            word_labels, word_onsets, word_offsets = (
-                load_word_labels_from_csv(csv_path, stim_name)
-            )
+            
+            # Load from TextGrid
+            if textgrid_path:
+                # Single TextGrid file for all stimuli
+                phoneme_labels, phoneme_onsets, phoneme_offsets = (
+                    load_phoneme_labels_from_textgrid(textgrid_path)
+                )
+                word_labels, word_onsets, word_offsets = (
+                    load_word_labels_from_textgrid(textgrid_path)
+                )
+            elif textgrid_dir:
+                # TextGrid file per stimulus
+                tg_path = os.path.join(textgrid_dir, f"{stim_name}.TextGrid")
+                phoneme_labels, phoneme_onsets, phoneme_offsets = (
+                    load_phoneme_labels_from_textgrid(tg_path)
+                )
+                word_labels, word_onsets, word_offsets = (
+                    load_word_labels_from_textgrid(tg_path)
+                )
+            else:
+                raise ValueError(
+                    "Must provide either textgrid_path or textgrid_dir"
+                )
 
             generate_diphone_features(
                 output_root,
