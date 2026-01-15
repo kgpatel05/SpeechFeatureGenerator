@@ -29,3 +29,7 @@ Thumbs.db
 
 # Jupyter
 .ipynb_checkpoints/
+
+# Generated output directories
+examples/out/
+precomputing/*/out/
