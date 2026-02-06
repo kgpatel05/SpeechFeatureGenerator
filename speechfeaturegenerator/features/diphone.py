@@ -14,6 +14,57 @@ from speechfeaturegenerator.utils.textgrid_reader import (
     load_word_labels_from_textgrid,
 )
 
+# Hardcoded phoneme labels matching feature_extraction
+all_phoneme_labels = [
+    "AA",
+    "AE",
+    "AH",
+    "AO",
+    "AW",
+    "AY",
+    "B",
+    "CH",
+    "D",
+    "DH",
+    "EH",
+    "ER",
+    "EY",
+    "F",
+    "G",
+    "HH",
+    "IH",
+    "IY",
+    "JH",
+    "K",
+    "L",
+    "M",
+    "N",
+    "NG",
+    "OW",
+    "OY",
+    "P",
+    "R",
+    "S",
+    "SH",
+    "T",
+    "TH",
+    "UH",
+    "UW",
+    "V",
+    "W",
+    "Y",
+    "Z",
+    "ZH",
+]
+
+# Hardcoded diphone labels matching feature_extraction
+all_diphone_labels = [
+    phoneme1 + "." + phoneme2
+    for phoneme1 in all_phoneme_labels
+    for phoneme2 in all_phoneme_labels
+    if phoneme1 != phoneme2
+] + [phoneme + ". " for phoneme in all_phoneme_labels]
+
 
 def generate_all_diphone_labels(all_phoneme_labels):
     """Generate all possible diphone labels from phoneme set."""
@@ -64,34 +115,7 @@ def diphone(
     variant = kwargs.get("variant", "onehot_duration")
 
     if compute_original:
-        # For diphone, we need to collect all phoneme labels from all stimuli first
-        # to generate the complete diphone label set
-        all_phoneme_labels_set = set()
-        
-        # Extract labels from all TextGrid files
-        for stim_name in stim_names:
-            if textgrid_path:
-                tg_path = textgrid_path
-            elif textgrid_dir:
-                tg_path = os.path.join(textgrid_dir, f"{stim_name}.TextGrid")
-            else:
-                raise ValueError(
-                    "Must provide either textgrid_path or textgrid_dir"
-                )
-            
-            labels, _, _ = load_phoneme_labels_from_textgrid(tg_path)
-            # Clean labels (remove stress markers and normalize)
-            labels = [re.sub(r"\d+", "", str(l).upper().strip()) for l in labels]
-            all_phoneme_labels_set.update(labels)
-        
-        if len(all_phoneme_labels_set) == 0:
-            raise ValueError(
-                "Could not extract phoneme labels from input files."
-            )
-        
-        all_phoneme_labels = sorted(all_phoneme_labels_set)
-        all_diphone_labels = generate_all_diphone_labels(all_phoneme_labels)
-
+        # Use hardcoded all_diphone_labels matching feature_extraction
         for stim_name in stim_names:
             wav_path = os.path.join(wav_dir, f"{stim_name}.wav")
             
@@ -171,13 +195,24 @@ def generate_diphone_features(
     word_onsets = np.array(word_onsets, dtype=float)
     word_offsets = np.array(word_offsets, dtype=float)
 
+    # Remove "spn" phonemes first
     phoneme_labels, phoneme_onsets, phoneme_offsets = remove_phoneme(
         phoneme_labels, phoneme_onsets, phoneme_offsets, "spn"
     )
 
+    # Clean and normalize phoneme labels
     phoneme_labels = np.array([label.upper() for label in phoneme_labels])
     phoneme_labels = [re.sub(r"\d+", "", phoneme) for phoneme in phoneme_labels]
     phoneme_labels = [str(phoneme).strip() for phoneme in phoneme_labels]
+    # Remove periods from phoneme labels (e.g., "SP." -> "SP") - matching feature_extraction
+    phoneme_labels = [str(phoneme).rstrip(".") for phoneme in phoneme_labels]
+    
+    # Remove "SP" (silent pause) phonemes after normalization
+    phoneme_labels = np.array(phoneme_labels)
+    sp_mask = phoneme_labels != "SP"
+    phoneme_labels = phoneme_labels[sp_mask]
+    phoneme_onsets = phoneme_onsets[sp_mask]
+    phoneme_offsets = phoneme_offsets[sp_mask]
     
     phoneme_onsets = phoneme_onsets.reshape(-1)
     phoneme_offsets = phoneme_offsets.reshape(-1)
@@ -205,24 +240,38 @@ def generate_diphone_features(
 
         if len(phoneme_indices) == 1:
             phoneme = phoneme_labels[phoneme_indices[0]]
-            diphone_labels.append(f"{phoneme}. ")
+            diphone = f"{phoneme}. "
+            diphone_labels.append(diphone)
             diphone_onsets.append(phoneme_onsets[phoneme_indices[0]])
             diphone_offsets.append(phoneme_offsets[phoneme_indices[0]])
         elif len(phoneme_indices) == 0:
-            raise ValueError(
-                f"No phoneme found in word {i} ({word_labels[i]}) in {wav_path}"
-            )
+            # Skip words without phonemes (e.g., silence markers) - matching feature_extraction
+            print(f"    Warning: No phoneme found in the {i}th word '{word_labels[i]}' in {wav_path}. Skipping.")
+            continue
         else:
             for j in range(len(phoneme_indices) - 1):
                 phoneme1 = phoneme_labels[phoneme_indices[j]]
                 phoneme2 = phoneme_labels[phoneme_indices[j + 1]]
-                diphone_labels.append(f"{phoneme1}.{phoneme2}")
+                diphone = f"{phoneme1}.{phoneme2}"
+                diphone_labels.append(diphone)
                 diphone_onsets.append(phoneme_onsets[phoneme_indices[j]])
                 diphone_offsets.append(phoneme_offsets[phoneme_indices[j + 1]])
 
     diphone_labels = np.array(diphone_labels)
     diphone_onsets = np.array(diphone_onsets)
     diphone_offsets = np.array(diphone_offsets)
+
+    # Filter out diphone labels that are not in all_diphone_labels - matching feature_extraction
+    all_diphone_labels_array = np.array(all_diphone_labels)
+    valid_mask = np.isin(diphone_labels, all_diphone_labels_array)
+    
+    if not np.all(valid_mask):
+        invalid_labels = np.unique(diphone_labels[~valid_mask])
+        print(f"    Warning: Found {len(invalid_labels)} invalid diphone labels: {invalid_labels}")
+        print(f"    Filtering out {np.sum(~valid_mask)} diphone instances")
+        diphone_labels = diphone_labels[valid_mask]
+        diphone_onsets = diphone_onsets[valid_mask]
+        diphone_offsets = diphone_offsets[valid_mask]
 
     feature_variant_out_dir = feature_variant_out_dirs[0]
     discrete_feature_variant_out_dir = feature_variant_out_dirs[1]
@@ -234,6 +283,9 @@ def generate_diphone_features(
         wav_name_no_ext,
     )
 
+    onset = "onset" in variant
+
+    # Use mode parameter for SpeechFeatureGenerator's generate_onehot_features
     if variant == "onehot_onset":
         mode = "onset"
     elif variant == "onehot_offset":

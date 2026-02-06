@@ -22,7 +22,7 @@ def generate_onehot_features(
         np.ndarray: One-hot encoded feature matrix of shape (n_t, n_labels).
     """
     n_labels = len(all_labels)
-    features = np.zeros((n_t, n_labels), dtype=np.float32)
+    features = np.zeros((n_t, n_labels), dtype=np.int8)
 
     label_to_index = {label: idx for idx, label in enumerate(all_labels)}
 
@@ -38,18 +38,18 @@ def generate_onehot_features(
         if mode == "onset":
             onset_idx = np.argmin(np.abs(time_points - onset))
             if onset_idx < n_t:
-                features[onset_idx, label_idx] = 1.0
+                features[onset_idx, label_idx] = 1
         elif mode == "offset":
             offset_idx = np.argmin(np.abs(time_points - offset))
             if offset_idx < n_t:
-                features[offset_idx, label_idx] = 1.0
+                features[offset_idx, label_idx] = 1
         else:  # mode == "duration"
             onset_idx = np.argmin(np.abs(time_points - onset))
             offset_idx = np.argmin(np.abs(time_points - offset))
             if onset_idx < n_t:
                 start_idx = max(0, onset_idx)
                 end_idx = min(n_t, offset_idx + 1)
-                features[start_idx:end_idx, label_idx] = 1.0
+                features[start_idx:end_idx, label_idx] = 1
 
     return features
 

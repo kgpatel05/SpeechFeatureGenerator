@@ -13,6 +13,49 @@ from speechfeaturegenerator.utils.textgrid_reader import (
     load_phoneme_labels_from_textgrid,
 )
 
+# Hardcoded phoneme labels matching feature_extraction
+all_phoneme_labels = [
+    "AA",
+    "AE",
+    "AH",
+    "AO",
+    "AW",
+    "AY",
+    "B",
+    "CH",
+    "D",
+    "DH",
+    "EH",
+    "ER",
+    "EY",
+    "F",
+    "G",
+    "HH",
+    "IH",
+    "IY",
+    "JH",
+    "K",
+    "L",
+    "M",
+    "N",
+    "NG",
+    "OW",
+    "OY",
+    "P",
+    "R",
+    "S",
+    "SH",
+    "T",
+    "TH",
+    "UH",
+    "UW",
+    "V",
+    "W",
+    "Y",
+    "Z",
+    "ZH",
+]
+
 
 def phoneme(
     device,
@@ -125,12 +168,33 @@ def generate_phoneme_features(
     phoneme_labels = [re.sub(r"\d+", "", phoneme) for phoneme in phoneme_labels]
     phoneme_labels = [str(phoneme).strip() for phoneme in phoneme_labels]
     
+    # Remove "SP" (silent pause) phonemes after normalization - matching feature_extraction behavior
+    phoneme_labels = np.array(phoneme_labels)
+    sp_mask = phoneme_labels != "SP"
+    phoneme_labels = phoneme_labels[sp_mask]
+    phoneme_onsets = phoneme_onsets[sp_mask]
+    phoneme_offsets = phoneme_offsets[sp_mask]
+    
     phoneme_onsets = phoneme_onsets.reshape(-1)
     phoneme_offsets = phoneme_offsets.reshape(-1)
     phoneme_labels = np.array(phoneme_labels, dtype="<U3")
 
-    # Extract unique phoneme labels from the data
-    all_phoneme_labels = sorted(set(phoneme_labels))
+    # Filter out phoneme labels that are not in all_phoneme_labels - matching feature_extraction
+    valid_mask = np.isin(phoneme_labels, all_phoneme_labels)
+    if not np.all(valid_mask):
+        invalid_labels = np.unique(phoneme_labels[~valid_mask])
+        print(f"  Warning: Filtering out {len(invalid_labels)} invalid phoneme labels: {invalid_labels}")
+        phoneme_labels = phoneme_labels[valid_mask]
+        phoneme_onsets = phoneme_onsets[valid_mask]
+        phoneme_offsets = phoneme_offsets[valid_mask]
+
+    onset = "onset" in variant
+    if "merge" in variant:
+        subclass = "merge"
+    elif "attribute" in variant:
+        subclass = "attribute"
+    else:
+        subclass = ""
 
     if variant == "onehot_onset":
         mode = "onset"
@@ -148,6 +212,15 @@ def generate_phoneme_features(
         mode=mode,
         sr=out_sr,
     )
+
+    # Handle merge and attribute variants - matching feature_extraction
+    # Note: merge_set and phn_tools would need to be imported/implemented if used
+    if subclass == "merge":
+        # This would require merge_set parameter - skipping for now as it's not in the current implementation
+        pass
+    elif subclass == "attribute":
+        # This would require phn_tools - skipping for now as it's not in the current implementation
+        pass
 
     out_mat_path = os.path.join(feature_variant_out_dir, f"{wav_name_no_ext}.mat")
     hdf5storage.savemat(out_mat_path, {"features": phoneme_features, "t": t_new})

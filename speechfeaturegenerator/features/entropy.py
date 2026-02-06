@@ -47,7 +47,7 @@ def entropy(
         log_base: Base for logarithm ("e", "2", or "10", default: "e")
         **kwargs: Additional arguments
     """
-    variant = kwargs.get("variant", "continuous")
+    variant = kwargs.get("variant", "onehot_duration")
 
     if compute_original:
         for stim_name in stim_names:
@@ -97,7 +97,7 @@ def generate_entropy_features(
     out_sr=100,
     time_window=[-1, 1],
     meta_only=False,
-    variant="continuous",
+    variant="onehot_duration",
     device="cpu",
     model_name="gpt2",
     log_base="e",
@@ -115,7 +115,7 @@ def generate_entropy_features(
         out_sr: Output sampling rate in Hz
         time_window: Time window [start, end] in seconds
         meta_only: If True, only generate metadata
-        variant: Feature variant name
+        variant: "onehot_duration" (value over word duration) or "onehot_onset" (value at onset only)
         device: Device to run model on
         model_name: GPT-2 model name
         log_base: Base for logarithm ("e", "2", or "10")
@@ -169,20 +169,26 @@ def generate_entropy_features(
         wav_name_no_ext,
     )
     
-    # Adjust timing for time window
-    word_onsets_adjusted = word_onsets + abs(time_window[0])
-    word_offsets_adjusted = word_offsets + abs(time_window[0])
-    
-    # Create time-aligned continuous feature
+    # Create time-aligned feature
+    # Note: Use t_new directly with searchsorted (no offset needed - t_new starts at time_window[0])
     entropy_ts = np.full(t_num_new, np.nan, dtype=float)
     
     for i in range(len(word_labels)):
-        s = int(round(word_onsets_adjusted[i] * out_sr))
-        e = int(round(word_offsets_adjusted[i] * out_sr))
-        if e <= s:
+        if np.isnan(word_entropy_full[i]):
             continue
-        if not np.isnan(word_entropy_full[i]):
-            entropy_ts[s:e] = word_entropy_full[i]
+        onset = word_onsets[i]
+        offset = word_offsets[i]
+        if variant == "onehot_onset":
+            # Place value at onset only
+            onset_idx = np.searchsorted(t_new, onset, side="left")
+            if onset_idx < len(entropy_ts):
+                entropy_ts[onset_idx] = word_entropy_full[i]
+        else:  # onehot_duration
+            # Spread value over duration
+            start_idx = np.searchsorted(t_new, onset, side="left")
+            end_idx = np.searchsorted(t_new, offset, side="right")
+            if start_idx < end_idx:
+                entropy_ts[start_idx:end_idx] = word_entropy_full[i]
     
     # Reshape for output (time x 1)
     entropy_features = entropy_ts.reshape(-1, 1)

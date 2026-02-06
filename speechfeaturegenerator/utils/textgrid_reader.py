@@ -33,26 +33,29 @@ def load_phoneme_labels_from_textgrid(
     # Load TextGrid
     tg = TextGrid.fromFile(str(textgrid_path))
     
-    # Find phoneme tier (try common names)
+    # Find phoneme tier (try common names; match case-insensitively and accept singular/plural)
     if tier_name is None:
-        tier_names = ["phones", "phonemes", "phone", "phoneme"]
+        tier_names_acceptable = {"phones", "phonemes", "phone", "phoneme"}
         tier = None
-        for name in tier_names:
-            try:
-                tier = tg.getFirst(name)
+        for t in tg.tiers:
+            if t.name.strip().lower() in tier_names_acceptable:
+                tier = t
                 break
-            except:
-                continue
         if tier is None:
-            available = [tier.name for tier in tg.tiers]
+            available = [t.name for t in tg.tiers]
             raise ValueError(
                 f"No phoneme tier found. Available tiers: {available}. "
-                f"Expected one of: {tier_names}"
+                f"Expected one of: {sorted(tier_names_acceptable)}"
             )
     else:
-        tier = tg.getFirst(tier_name)
+        tier = None
+        tier_name_lower = tier_name.strip().lower()
+        for t in tg.tiers:
+            if t.name.strip().lower() == tier_name_lower:
+                tier = t
+                break
         if tier is None:
-            available = [tier.name for tier in tg.tiers]
+            available = [t.name for t in tg.tiers]
             raise ValueError(
                 f"Tier '{tier_name}' not found. Available tiers: {available}"
             )
@@ -104,26 +107,29 @@ def load_word_labels_from_textgrid(
     # Load TextGrid
     tg = TextGrid.fromFile(str(textgrid_path))
     
-    # Find word tier (try common names)
+    # Find word tier (match case-insensitively; accept "word" and "words")
     if tier_name is None:
-        tier_names = ["words", "word", "Words", "Word"]
+        tier_names_acceptable = {"words", "word"}
         tier = None
-        for name in tier_names:
-            try:
-                tier = tg.getFirst(name)
+        for t in tg.tiers:
+            if t.name.strip().lower() in tier_names_acceptable:
+                tier = t
                 break
-            except:
-                continue
         if tier is None:
-            available = [tier.name for tier in tg.tiers]
+            available = [t.name for t in tg.tiers]
             raise ValueError(
                 f"No word tier found. Available tiers: {available}. "
-                f"Expected one of: {tier_names}"
+                f"Expected one of: {sorted(tier_names_acceptable)}"
             )
     else:
-        tier = tg.getFirst(tier_name)
+        tier = None
+        tier_name_lower = tier_name.strip().lower()
+        for t in tg.tiers:
+            if t.name.strip().lower() == tier_name_lower:
+                tier = t
+                break
         if tier is None:
-            available = [tier.name for tier in tg.tiers]
+            available = [t.name for t in tg.tiers]
             raise ValueError(
                 f"Tier '{tier_name}' not found. Available tiers: {available}"
             )
